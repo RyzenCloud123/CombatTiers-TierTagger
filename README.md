@@ -19,9 +19,6 @@ Native source project for Combat Tiers.
 ## Database
 
 The mod reads:
-
-`https://project-5dd9e-default-rtdb.asia-southeast1.firebasedatabase.app/players.json`
-
 Expected player data:
 
 ```json
