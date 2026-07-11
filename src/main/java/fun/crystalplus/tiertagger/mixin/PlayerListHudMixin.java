@@ -21,7 +21,7 @@ public abstract class PlayerListHudMixin {
         PlayerListEntry entry,
         CallbackInfoReturnable<Text> cir
     ) {
-        String username = entry.getProfile().getName();
+        String username = entry.getProfile().name();
         String tier = TierTaggerClient.getVanillaTier(username);
 
         if (tier == null) {
