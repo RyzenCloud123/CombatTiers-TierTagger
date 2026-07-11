@@ -1,6 +1,6 @@
 # Combat Tiers TierTagger — Fabric 1.21.11
 
-Native source project for Combat Tiers.
+Made By NegativeTier
 
 ## Features
 
@@ -65,3 +65,4 @@ Put the compiled JAR inside the Minecraft profile's `mods` folder with:
 - Java 21
 
 Delete every older Combat TierTagger JAR first.
+Developed By NegativeTier
