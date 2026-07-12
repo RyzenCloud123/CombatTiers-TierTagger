@@ -10,8 +10,11 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import java.util.Map;
+
 @Mixin(PlayerListHud.class)
 public abstract class PlayerListHudMixin {
+
     @Inject(
         method = "getPlayerName",
         at = @At("RETURN"),
@@ -22,14 +25,19 @@ public abstract class PlayerListHudMixin {
         CallbackInfoReturnable<Text> cir
     ) {
         String username = entry.getProfile().name();
-        String tier = TierTaggerClient.getVanillaTier(username);
 
-        if (tier == null) {
+        Map<String, String> tiers =
+            TierTaggerClient.getPlayerTiers(username);
+
+        if (tiers.isEmpty()) {
             return;
         }
 
         cir.setReturnValue(
-            TierText.decorate(username, tier, cir.getReturnValue())
+            TierText.decorate(
+                cir.getReturnValue(),
+                tiers
+            )
         );
     }
 }
