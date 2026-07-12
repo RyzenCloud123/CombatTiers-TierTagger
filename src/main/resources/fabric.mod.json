@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "combattier_tiertagger",
+  "version": "${version}",
+  "name": "Combat Tiers TierTagger",
+  "description": "Combat Tiers TierTagger V2 with real gamemode PNG icons, website-matched tier colors, multi-gamemode database support, and /ctiers player lookup.",
+  "authors": [
+    "NegativeTier",
+    "Combat Tiers"
+  ],
+  "contact": {
+    "homepage": "https://tiers.crystalplus.fun"
+  },
+  "license": "MIT",
+  "icon": "assets/combattier_tiertagger/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "fun.crystalplus.tiertagger.TierTaggerClient"
+    ]
+  },
+  "mixins": [
+    "combattier_tiertagger.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
