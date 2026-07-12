@@ -15,7 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,13 +25,25 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class TierTaggerClient implements ClientModInitializer {
+
     public static final String MOD_ID = "combattier_tiertagger";
 
     private static final String FIREBASE_URL =
         "https://project-5dd9e-default-rtdb.asia-southeast1.firebasedatabase.app/players.json";
 
-    private static final Map<String, String> VANILLA_TIERS = new ConcurrentHashMap<>();
-    private static final AtomicBoolean REQUEST_RUNNING = new AtomicBoolean(false);
+    /*
+     * Structure:
+     * username -> gamemode -> tier
+     *
+     * Example:
+     * negativetier -> vanilla -> HT3
+     * negativetier -> nethop  -> LT3
+     */
+    private static final Map<String, Map<String, String>> PLAYER_TIERS =
+        new ConcurrentHashMap<>();
+
+    private static final AtomicBoolean REQUEST_RUNNING =
+        new AtomicBoolean(false);
 
     private static final HttpClient HTTP = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(6))
@@ -40,7 +52,10 @@ public final class TierTaggerClient implements ClientModInitializer {
 
     private static final ScheduledExecutorService EXECUTOR =
         Executors.newSingleThreadScheduledExecutor(runnable -> {
-            Thread thread = new Thread(runnable, "CombatTiers-TierTagger");
+            Thread thread = new Thread(
+                runnable,
+                "CombatTiers-TierTagger"
+            );
             thread.setDaemon(true);
             return thread;
         });
@@ -52,7 +67,10 @@ public final class TierTaggerClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        System.out.println("[Combat Tiers TierTagger] Starting native 1.21.11 build.");
+        System.out.println(
+            "[Combat Tiers TierTagger] Starting multi-gamemode build."
+        );
+
         loadCache();
 
         EXECUTOR.scheduleWithFixedDelay(
@@ -63,12 +81,20 @@ public final class TierTaggerClient implements ClientModInitializer {
         );
     }
 
-    public static String getVanillaTier(String username) {
-        if (username == null) {
-            return null;
+    public static Map<String, String> getPlayerTiers(String username) {
+        if (username == null || username.isBlank()) {
+            return Map.of();
         }
 
-        return VANILLA_TIERS.get(username.toLowerCase(Locale.ROOT));
+        Map<String, String> tiers = PLAYER_TIERS.get(
+            username.toLowerCase(Locale.ROOT)
+        );
+
+        if (tiers == null) {
+            return Map.of();
+        }
+
+        return new LinkedHashMap<>(tiers);
     }
 
     private static void refresh() {
@@ -76,14 +102,24 @@ public final class TierTaggerClient implements ClientModInitializer {
             return;
         }
 
-        HttpRequest request = HttpRequest.newBuilder(URI.create(FIREBASE_URL))
+        HttpRequest request = HttpRequest.newBuilder(
+                URI.create(FIREBASE_URL)
+            )
             .timeout(Duration.ofSeconds(10))
             .header("Accept", "application/json")
-            .header("User-Agent", "CombatTiers-TierTagger/1.0.0")
+            .header(
+                "User-Agent",
+                "CombatTiers-TierTagger/1.1.0"
+            )
             .GET()
             .build();
 
-        HTTP.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
+        HTTP.sendAsync(
+                request,
+                HttpResponse.BodyHandlers.ofString(
+                    StandardCharsets.UTF_8
+                )
+            )
             .orTimeout(12, TimeUnit.SECONDS)
             .whenComplete((response, throwable) -> {
                 try {
@@ -103,16 +139,20 @@ public final class TierTaggerClient implements ClientModInitializer {
                         return;
                     }
 
-                    Map<String, String> parsed = parsePlayers(response.body());
-                    VANILLA_TIERS.clear();
-                    VANILLA_TIERS.putAll(parsed);
+                    Map<String, Map<String, String>> parsed =
+                        parsePlayers(response.body());
+
+                    PLAYER_TIERS.clear();
+                    PLAYER_TIERS.putAll(parsed);
+
                     saveCache(response.body());
 
                     System.out.println(
                         "[Combat Tiers TierTagger] Loaded "
                             + parsed.size()
-                            + " Vanilla tiers."
+                            + " players with multi-gamemode tiers."
                     );
+
                 } catch (Exception exception) {
                     System.err.println(
                         "[Combat Tiers TierTagger] Parse failure: "
@@ -124,47 +164,123 @@ public final class TierTaggerClient implements ClientModInitializer {
             });
     }
 
-    private static Map<String, String> parsePlayers(String json) {
-        Map<String, String> result = new HashMap<>();
+    private static Map<String, Map<String, String>> parsePlayers(
+        String json
+    ) {
+        Map<String, Map<String, String>> result =
+            new LinkedHashMap<>();
 
         JsonElement rootElement = JsonParser.parseString(json);
+
         if (!rootElement.isJsonObject()) {
             return result;
         }
 
         JsonObject players = rootElement.getAsJsonObject();
 
-        for (Map.Entry<String, JsonElement> playerEntry : players.entrySet()) {
+        for (
+            Map.Entry<String, JsonElement> playerEntry
+                : players.entrySet()
+        ) {
             if (!playerEntry.getValue().isJsonObject()) {
                 continue;
             }
 
-            JsonObject player = playerEntry.getValue().getAsJsonObject();
-            JsonObject tiers = player.has("tiers") && player.get("tiers").isJsonObject()
-                ? player.getAsJsonObject("tiers")
-                : null;
+            JsonObject player =
+                playerEntry.getValue().getAsJsonObject();
 
-            if (tiers == null || !tiers.has("vanilla") || tiers.get("vanilla").isJsonNull()) {
+            if (
+                !player.has("tiers")
+                    || !player.get("tiers").isJsonObject()
+            ) {
                 continue;
             }
 
-            String tier = tiers.get("vanilla").getAsString().trim().toUpperCase(Locale.ROOT);
-            if (tier.isEmpty() || tier.equals("NONE")) {
+            JsonObject tiersObject =
+                player.getAsJsonObject("tiers");
+
+            Map<String, String> tiers =
+                new LinkedHashMap<>();
+
+            for (
+                Map.Entry<String, JsonElement> tierEntry
+                    : tiersObject.entrySet()
+            ) {
+                if (
+                    tierEntry.getValue() == null
+                        || tierEntry.getValue().isJsonNull()
+                ) {
+                    continue;
+                }
+
+                String gamemode = tierEntry.getKey()
+                    .trim()
+                    .toLowerCase(Locale.ROOT);
+
+                String tier = tierEntry.getValue()
+                    .getAsString()
+                    .trim()
+                    .toUpperCase(Locale.ROOT);
+
+                if (
+                    tier.isEmpty()
+                        || tier.equals("NONE")
+                        || tier.equals("NULL")
+                ) {
+                    continue;
+                }
+
+                tiers.put(
+                    normalizeGamemode(gamemode),
+                    tier
+                );
+            }
+
+            if (tiers.isEmpty()) {
                 continue;
             }
 
-            String databaseKey = playerEntry.getKey().toLowerCase(Locale.ROOT);
-            result.put(databaseKey, tier);
+            String databaseKey = playerEntry.getKey()
+                .toLowerCase(Locale.ROOT);
 
-            if (player.has("username") && !player.get("username").isJsonNull()) {
-                String username = player.get("username").getAsString();
+            result.put(
+                databaseKey,
+                new LinkedHashMap<>(tiers)
+            );
+
+            if (
+                player.has("username")
+                    && !player.get("username").isJsonNull()
+            ) {
+                String username = player.get("username")
+                    .getAsString()
+                    .trim();
+
                 if (!username.isBlank()) {
-                    result.put(username.toLowerCase(Locale.ROOT), tier);
+                    result.put(
+                        username.toLowerCase(Locale.ROOT),
+                        new LinkedHashMap<>(tiers)
+                    );
                 }
             }
         }
 
         return result;
+    }
+
+    private static String normalizeGamemode(String gamemode) {
+        return switch (gamemode) {
+            case "nethpot", "netherpot", "nethop" -> "nethop";
+            case "sword", "swords" -> "sword";
+            case "smp" -> "smp";
+            case "vanilla" -> "vanilla";
+            case "mace" -> "mace";
+            case "axe" -> "axe";
+            case "pot", "potion" -> "pot";
+            case "cart", "cartpvp" -> "cart";
+            case "uhc" -> "uhc";
+            default -> gamemode;
+        };
     }
 
     private static void loadCache() {
@@ -173,15 +289,22 @@ public final class TierTaggerClient implements ClientModInitializer {
         }
 
         try {
-            String json = Files.readString(CACHE_FILE, StandardCharsets.UTF_8);
-            Map<String, String> parsed = parsePlayers(json);
-            VANILLA_TIERS.putAll(parsed);
+            String json = Files.readString(
+                CACHE_FILE,
+                StandardCharsets.UTF_8
+            );
+
+            Map<String, Map<String, String>> parsed =
+                parsePlayers(json);
+
+            PLAYER_TIERS.putAll(parsed);
 
             System.out.println(
                 "[Combat Tiers TierTagger] Loaded "
                     + parsed.size()
-                    + " cached tiers."
+                    + " cached players."
             );
+
         } catch (IOException | RuntimeException exception) {
             System.err.println(
                 "[Combat Tiers TierTagger] Cache load failed: "
